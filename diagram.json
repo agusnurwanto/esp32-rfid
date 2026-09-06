@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "author": "RFID Test",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "wokwi-esp32-devkit-v1", "id": "esp", "top": 0, "left": 0, "attrs": {} },
+    { "type": "wokwi-rfid-rc522", "id": "rfid", "top": -40, "left": 220, "attrs": {} }
+  ],
+  "connections": [
+    [ "esp:3V3", "rfid:3.3V", "red", [ "v0" ] ],
+    [ "esp:GND.1", "rfid:GND", "black", [ "v0" ] ],
+    [ "esp:D18", "rfid:SCK", "yellow", [ "v0" ] ],
+    [ "esp:D19", "rfid:MISO", "blue", [ "v0" ] ],
+    [ "esp:D23", "rfid:MOSI", "green", [ "v0" ] ],
+    [ "esp:D5", "rfid:SDA", "orange", [ "v0" ] ],
+    [ "esp:D4", "rfid:RST", "gray", [ "v0" ] ]
+  ]
+}
