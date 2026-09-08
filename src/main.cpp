@@ -70,7 +70,7 @@ ServerResponse checkAndLogToGoogle(const String& date, const String& time, const
   HTTPClient http;
   
   // Susun URL permintaan dengan query parameter UID, Date, dan Time
-  String url = GOOGLE_SCRIPT_URL + "?uid=" + uid + "&date=" + date + "&time=" + time;
+  String url = String(GOOGLE_SCRIPT_URL) + "?uid=" + uid + "&date=" + date + "&time=" + time;
   url.replace(" ", "%20"); 
 
   Serial.println("[HTTP] Menghubungi Google Sheets Database...");
