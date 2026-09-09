@@ -28,7 +28,7 @@
   "connections": [
     [ "esp:3V3", "rfid1:VCC", "red", [ "v-20", "h-100" ] ],
     [ "esp:GND.1", "rfid1:GND", "black", [ "v-30", "h-80" ] ],
-    [ "esp:D22", "rfid1:RST", "gray", [ "v-40", "h-60" ] ],
+    [ "esp:D15", "rfid1:RST", "gray", [ "v-40", "h-60" ] ],
     [ "esp:D19", "rfid1:MISO", "blue", [ "v-50", "h-40" ] ],
     [ "esp:D23", "rfid1:MOSI", "green", [ "v-60", "h-20" ] ],
     [ "esp:D18", "rfid1:SCK", "yellow", [ "v-70", "h0" ] ],
@@ -37,12 +37,12 @@
     [ "esp:3V3", "oled1:VCC", "red", [ "v-20", "h120" ] ],
     [ "esp:GND.1", "oled1:GND", "black", [ "v-30", "h100" ] ],
     [ "esp:D21", "oled1:SDA", "blue", [ "v-40", "h80" ] ],
-    [ "esp:D15", "oled1:SCL", "yellow", [ "v-50", "h60" ] ],
+    [ "esp:D22", "oled1:SCL", "yellow", [ "v-50", "h60" ] ],
 
     [ "esp:5V", "rtc1:5V", "red", [ "h50" ] ],
     [ "esp:GND.2", "rtc1:GND", "black", [ "h60" ] ],
     [ "esp:D21", "rtc1:SDA", "blue", [ "h70" ] ],
-    [ "esp:D15", "rtc1:SCL", "yellow", [ "h80" ] ],
+    [ "esp:D22", "rtc1:SCL", "yellow", [ "h80" ] ],
 
     [ "esp:VIN", "sd1:VCC", "red", [ "v50", "h-120" ] ],
     [ "esp:GND.1", "sd1:GND", "black", [ "v60", "h-100" ] ],
@@ -56,7 +56,11 @@
     [ "esp:D12", "r2:1", "red", [ "v20" ] ],
     [ "r2:2", "led_red:A", "red", [ "v0" ] ],
     [ "led_green:C", "esp:GND.2", "green", [ "v0" ] ],
-    [ "led_red:C", "esp:GND.2", "green", [ "v0" ] ]
+    [ "led_red:C", "esp:GND.2", "green", [ "v0" ] ],
+
+    [ "esp:TX0", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX0", "$serialMonitor:TX", "", [] ]
   ],
-  "dependencies": {}
+  "dependencies": {},
+  "serialMonitor": {"display": "always", "newline": "lf", "speed": 115200}
 }

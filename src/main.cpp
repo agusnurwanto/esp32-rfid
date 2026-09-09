@@ -8,20 +8,27 @@
 #include <FS.h>
 #include <SD.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include "secrets.h"  // ← kredensial lokal, tidak di-commit ke Git
+
+// ════════════════════════════════════════════════════════════════════════════
+// AKTIFKAN saat testing di Wokwi (VS Code / Online) — HTTPS tidak didukung
+// NONAKTIFKAN (komen baris di bawah) saat deploy ke hardware ESP32 asli
+// #define WOKWI_SIMULATION
+// ════════════════════════════════════════════════════════════════════════════
 
 // Konfigurasi Pin SPI (Berbagi bus antara MFRC522 dan MicroSD)
 #define PIN_SPI_SCK   18
 #define PIN_SPI_MISO  19
 #define PIN_SPI_MOSI  23
 #define PIN_RFID_SS    5
-#define PIN_RFID_RST  22
+#define PIN_RFID_RST  15
 #define PIN_SD_CS      4
 
 // Konfigurasi Pin I2C (Berbagi bus antara OLED & DS1307 RTC)
 #define PIN_I2C_SDA   21
-#define PIN_I2C_SCL   15
+#define PIN_I2C_SCL   22
 
 // Konfigurasi Pin Indikator LED
 #define PIN_LED_GREEN  2
@@ -67,15 +74,32 @@ ServerResponse checkAndLogToGoogle(const String& date, const String& time, const
     return responseData;
   }
 
-  HTTPClient http;
-  
   // Susun URL permintaan dengan query parameter UID, Date, dan Time
   String url = String(GOOGLE_SCRIPT_URL) + "?uid=" + uid + "&date=" + date + "&time=" + time;
   url.replace(" ", "%20"); 
 
   Serial.println("[HTTP] Menghubungi Google Sheets Database...");
-  http.begin(url);
-  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS); 
+
+#ifdef WOKWI_SIMULATION
+  // ── MODE SIMULASI WOKWI ──────────────────────────────────────────────────
+  // HTTPS ke script.google.com tidak didukung di Wokwi VS Code extension.
+  // Mock response digunakan agar alur UI/LED/SD bisa ditest sepenuhnya.
+  // Hapus define WOKWI_SIMULATION saat deploy ke hardware asli.
+  Serial.println("[SIM] Mock response aktif (HTTPS tidak didukung di Wokwi).");
+  responseData.isRegistered = true;
+  responseData.name = "Siswa Simulasi";
+  responseData.status = "Hadir";
+  return responseData;
+  // ────────────────────────────────────────────────────────────────────────
+#endif
+
+
+  WiFiClientSecure client;
+  client.setInsecure(); // Lewati verifikasi sertifikat SSL (diperlukan untuk script.google.com)
+  
+  HTTPClient http;
+  http.begin(client, url);
+  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
 
   int httpCode = http.GET();
   if (httpCode == HTTP_CODE_OK) {
@@ -187,6 +211,8 @@ void setup() {
 
   // Inisialisasi WiFi
   Serial.print("[WiFi] Menghubungkan ke "); Serial.println(WIFI_SSID);
+  // Set DNS custom (Google + Cloudflare) — tetap pakai DHCP untuk IP/gateway
+  WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, IPAddress(8,8,8,8), IPAddress(1,1,1,1));
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   int retry = 0;
   while (WiFi.status() != WL_CONNECTED && retry < 15) {
@@ -194,11 +220,18 @@ void setup() {
   }
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("\n[WiFi] Terhubung! IP: " + WiFi.localIP().toString());
+  }else {
+    Serial.println("\n[WiFi] GAGAL KONEK! Cek SSID/Pass");
   }
 
   // Inisialisasi I2C & OLED
+  Serial.print("[OLED] Inisialisasi... ");
   Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
-  if (display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println("GAGAL! Cek kabel SDA SCL & Alamat 0x3C/0x3D");
+  // display mati tapi program tetap jalan
+  } else {
+    Serial.println("BERHASIL");
     display.clearDisplay();
     display.setTextSize(1);
     display.setTextColor(SSD1306_WHITE);
