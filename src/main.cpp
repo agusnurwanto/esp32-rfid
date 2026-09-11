@@ -13,10 +13,31 @@
 #include "secrets.h"  // ← kredensial lokal, tidak di-commit ke Git
 
 // ════════════════════════════════════════════════════════════════════════════
+// KONFIGURASI OPSI PENYIMPANAN DATA
+// ════════════════════════════════════════════════════════════════════════════
+// Pilih satu dari opsi berikut:
+// #define USE_STORAGE_GAS        // Uncomment ini untuk Google Apps Script
+#define USE_STORAGE_FIREBASE    // Uncomment ini untuk Firebase Realtime Database
+
+// Jika menggunakan FIREBASE, aktifkan library FirebaseClient di bawah ini
+#if defined(USE_STORAGE_FIREBASE)
+  #include <FirebaseClient.h>
+#endif
+
+// ════════════════════════════════════════════════════════════════════════════
 // AKTIFKAN saat testing di Wokwi (VS Code / Online) — HTTPS tidak didukung
 // NONAKTIFKAN (komen baris di bawah) saat deploy ke hardware ESP32 asli
 // #define WOKWI_SIMULATION
 // ════════════════════════════════════════════════════════════════════════════
+
+// ════════════════════════════════════════════════════════════════════════════
+// OBJEK GLOBAL FIREBASE (hanya saat USE_STORAGE_FIREBASE)
+// ════════════════════════════════════════════════════════════════════════════
+#if defined(USE_STORAGE_FIREBASE)
+  FirebaseClient firebase;
+  WiFiClientSecure ssl;
+  bool firebaseReady = false;
+#endif
 
 // Konfigurasi Pin SPI (Berbagi bus antara MFRC522 dan MicroSD)
 #define PIN_SPI_SCK   18
@@ -25,6 +46,20 @@
 #define PIN_RFID_SS    5
 #define PIN_RFID_RST  15
 #define PIN_SD_CS      4
+
+// ════════════════════════════════════════════════════════════════════════════
+// HELPER FUNCTION: Clean UID untuk Firebase (remove spaces & special chars)
+// ════════════════════════════════════════════════════════════════════════════
+String cleanUIDForFirebase(const String& uid) {
+  String cleaned = uid;
+  // Replace spaces dengan underscore
+  cleaned.replace(" ", "_");
+  // Replace colons dengan underscore
+  cleaned.replace(":", "_");
+  // Replace slashes dengan underscore
+  cleaned.replace("/", "_");
+  return cleaned;
+}
 
 // Konfigurasi Pin I2C (Berbagi bus antara OLED & DS1307 RTC)
 #define PIN_I2C_SDA   21
@@ -63,6 +98,235 @@ String extractJsonValue(const String& json, const String& key) {
     if (end != -1) return json.substring(start, end);
   }
   return "";
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// FUNGSI FIREBASE: Inisialisasi dan operasi database
+// ════════════════════════════════════════════════════════════════════════════
+#if defined(USE_STORAGE_FIREBASE)
+
+void initializeFirebase() {
+  Serial.println("[Firebase] Inisialisasi Firebase Realtime Database dengan FirebaseClient...");
+  
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("[Firebase] WiFi belum terhubung, skip Firebase init");
+    return;
+  }
+
+  // Setup FirebaseClient dengan kredensial
+  // Format: firebase.setSecure() untuk menggunakan SSL
+  ssl.setInsecure(); // Bypass SSL verification (untuk development)
+  
+  // Konfigurasi koneksi Firebase
+  // FirebaseClient menggunakan REST API langsung
+  firebaseReady = true;
+  Serial.println("[Firebase] FirebaseClient siap. Tunggu test koneksi...");
+}
+
+// Test koneksi Firebase dengan simple GET
+bool testFirebaseConnection() {
+  if (!firebaseReady || WiFi.status() != WL_CONNECTED) {
+    return false;
+  }
+
+  Serial.println("[Firebase] Test koneksi...");
+  
+  // Buat HTTP request ke Firebase
+  HTTPClient http;
+  http.setConnectTimeout(3000);
+  
+  String testUrl = String(FIREBASE_DATABASE_URL) + "/.json?auth=" + String(FIREBASE_API_KEY);
+  
+  if (http.begin(ssl, testUrl)) {
+    int httpCode = http.GET();
+    if (httpCode == 200) {
+      Serial.println("[Firebase] ✓ Koneksi berhasil!");
+      http.end();
+      return true;
+    } else {
+      Serial.printf("[Firebase] HTTP Error: %d\n", httpCode);
+      http.end();
+      return false;
+    }
+  } else {
+    Serial.println("[Firebase] Gagal membuat request");
+    return false;
+  }
+}
+
+#endif
+
+// Fungsi untuk memverifikasi UID ke Firebase (menggunakan REST API)
+ServerResponse checkAndLogToFirebase(const String& date, const String& time, const String& uid) {
+  ServerResponse responseData = {false, "Tidak Dikenal", "Ditolak"};
+
+  if (!firebaseReady || WiFi.status() != WL_CONNECTED) {
+    Serial.println("[Firebase] Tidak terhubung. Pengecekan ditolak.");
+    return responseData;
+  }
+
+  Serial.println("[Firebase] Mencari UID di database...");
+
+  // Clean UID untuk Firebase compatibility
+  String cleanUID = cleanUIDForFirebase(uid);
+  
+  // Gunakan .json dengan auth parameter
+  // Firebase REST API memerlukan auth untuk verifikasi rules
+  String path = String(FIREBASE_DATABASE_URL) + "/students/" + cleanUID + ".json?auth=" + String(FIREBASE_API_KEY);
+  
+  HTTPClient http;
+  http.setConnectTimeout(5000);
+  http.setTimeout(5000);
+  http.addHeader("Content-Type", "application/json");
+  
+  Serial.printf("[Firebase] GET: %s\n", path.c_str());
+  Serial.printf("[Firebase] API Key Length: %d chars\n", String(FIREBASE_API_KEY).length());
+  
+  if (http.begin(ssl, path)) {
+    int httpCode = http.GET();
+    Serial.printf("[Firebase] Response Code: %d\n", httpCode);
+    
+    if (httpCode == 200) {
+      String payload = http.getString();
+      Serial.printf("[Firebase] Data: %s\n", payload.c_str());
+
+      // Cek apakah null (node tidak ada)
+      if (payload == "null") {
+        Serial.println("[Firebase] UID tidak ditemukan (empty node)");
+        responseData.isRegistered = false;
+      } else {
+        // Parse JSON response
+        if (payload.indexOf("\"registered\":true") != -1 || payload.indexOf("\"registered\": true") != -1) {
+          responseData.isRegistered = true;
+        }
+
+        String parsedName = extractJsonValue(payload, "name");
+        String parsedStatus = extractJsonValue(payload, "status");
+
+        if (parsedName.length() > 0) responseData.name = parsedName;
+        if (parsedStatus.length() > 0) responseData.status = parsedStatus;
+      }
+      
+    } else if (httpCode == 404) {
+      Serial.println("[Firebase] UID tidak ditemukan (404)");
+      responseData.isRegistered = false;
+    } else if (httpCode == 400) {
+      String errorBody = http.getString();
+      Serial.println("[Firebase] ✗ Bad Request (400)");
+      Serial.println("[Firebase] Possible causes:");
+      Serial.println("  - UID format invalid (has special chars)");
+      Serial.println("  - Database URL wrong");
+      Serial.printf("  - Response: %s\n", errorBody.c_str());
+    } else if (httpCode == 401) {
+      String errorBody = http.getString();
+      Serial.println("[Firebase] ✗ Unauthorized (401)");
+      Serial.println("[Firebase] Fix checklist:");
+      Serial.println("  1. Verify FIREBASE_API_KEY in secrets.h");
+      Serial.println("  2. Get fresh API Key from Firebase Console");
+      Serial.println("  3. Check Firebase Rules allow .read");
+      Serial.println("  4. Try: Rules > Start in test mode (public)");
+      if (errorBody.length() > 0) {
+        Serial.printf("  5. Error: %s\n", errorBody.c_str());
+      }
+    } else {
+      String errorBody = http.getString();
+      Serial.printf("[Firebase] HTTP Error %d\n", httpCode);
+      if (errorBody.length() > 0) {
+        Serial.printf("[Firebase] Response: %s\n", errorBody.c_str());
+      }
+    }
+    
+    http.end();
+  } else {
+    Serial.println("[Firebase] Gagal membuat HTTP request");
+  }
+
+  return responseData;
+}
+
+// Fungsi untuk menyimpan log ke Firebase (menggunakan REST API)
+void logToFirebase(const String& timestamp, const String& uid, const String& name, const String& status) {
+  if (!firebaseReady || WiFi.status() != WL_CONNECTED) {
+    Serial.println("[Firebase] Tidak terhubung. Log tidak disimpan.");
+    return;
+  }
+
+  Serial.println("[Firebase] Menyimpan log ke database...");
+
+  // Clean UID untuk Firebase path compatibility
+  String cleanUID = cleanUIDForFirebase(uid);
+  
+  // Gunakan POST dengan auth parameter
+  // Format: https://DATABASE_URL/attendance.json?auth=API_KEY
+  String path = String(FIREBASE_DATABASE_URL) + "/attendance.json?auth=" + String(FIREBASE_API_KEY);
+  
+  // Buat JSON payload - minimal data untuk reduce errors
+  String jsonData = "{";
+  jsonData += "\"timestamp\":\"" + timestamp + "\",";
+  jsonData += "\"uid\":\"" + cleanUID + "\",";
+  jsonData += "\"name\":\"" + name + "\",";
+  jsonData += "\"status\":\"" + status + "\"";
+  jsonData += "}";
+
+  Serial.printf("[Firebase] POST to: %s\n", path.c_str());
+  Serial.printf("[Firebase] Data length: %d bytes\n", jsonData.length());
+  Serial.printf("[Firebase] API Key Length: %d chars\n", String(FIREBASE_API_KEY).length());
+
+  HTTPClient http;
+  http.setConnectTimeout(5000);
+  http.setTimeout(5000);
+  http.addHeader("Content-Type", "application/json");
+  
+  if (http.begin(ssl, path)) {
+    // Use POST untuk auto-generate key di Firebase
+    int httpCode = http.POST(jsonData);
+    Serial.printf("[Firebase] Response Code: %d\n", httpCode);
+    
+    if (httpCode == 200) {
+      String response = http.getString();
+      Serial.println("[Firebase] ✓ Log berhasil disimpan!");
+      Serial.printf("[Firebase] Response: %s\n", response.c_str());
+    } else if (httpCode == 400) {
+      String errorBody = http.getString();
+      Serial.println("[Firebase] ✗ Bad Request (400)");
+      Serial.println("[Firebase] Debugging tips:");
+      Serial.println("  1. Verifikasi FIREBASE_DATABASE_URL di secrets.h");
+      Serial.println("  2. Pastikan Firebase Rules mengizinkan write ke /attendance");
+      Serial.println("  3. Cek apakah UID memiliki karakter khusus");
+      Serial.println("  4. Format JSON valid? Lihat payload di atas");
+      if (errorBody.length() > 0) {
+        Serial.printf("  5. Server error: %s\n", errorBody.c_str());
+      }
+    } else if (httpCode == 401) {
+      String errorBody = http.getString();
+      Serial.println("[Firebase] ✗ Unauthorized (401)");
+      Serial.println("[Firebase] Authentication failed. Fix:");
+      Serial.println("  1. Check FIREBASE_API_KEY in secrets.h (must not be empty)");
+      Serial.println("  2. Get fresh API Key from Firebase Console > Project Settings");
+      Serial.println("  3. Update Firebase Rules to allow write:");
+      Serial.println("     {\"rules\": {\".read\": true, \".write\": true}}");
+      Serial.println("  4. Or use: Rules > Start in test mode (temporarily public)");
+      if (errorBody.length() > 0) {
+        Serial.printf("  5. Server response: %s\n", errorBody.c_str());
+      }
+    } else if (httpCode == 403) {
+      Serial.println("[Firebase] ✗ Forbidden (403)");
+      Serial.println("[Firebase] Firebase Rules tidak mengizinkan write");
+      Serial.println("[Firebase] Buka Firebase Console > Realtime Database > Rules");
+      Serial.println("[Firebase] Update ke: {\"rules\": {\".read\": true, \".write\": true}}");
+    } else {
+      String errorBody = http.getString();
+      Serial.printf("[Firebase] ✗ HTTP Error %d\n", httpCode);
+      if (errorBody.length() > 0) {
+        Serial.printf("[Firebase] Response: %s\n", errorBody.c_str());
+      }
+    }
+    
+    http.end();
+  } else {
+    Serial.println("[Firebase] ✗ Gagal membuat HTTP POST request");
+    Serial.println("[Firebase] Check database URL dan WiFi connection");
+  }
 }
 
 // Fungsi untuk memverifikasi UID ke Google Sheets dan menerima nama siswa
@@ -125,6 +389,28 @@ ServerResponse checkAndLogToGoogle(const String& date, const String& time, const
   
   http.end();
   return responseData;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// FUNGSI DISPATCH: Router untuk memilih metode penyimpanan
+// ════════════════════════════════════════════════════════════════════════════
+ServerResponse sendAndVerifyCard(const String& date, const String& time, const String& uid) {
+  #if defined(USE_STORAGE_FIREBASE)
+    Serial.println("\n[SYSTEM] Storage Mode: FIREBASE");
+    return checkAndLogToFirebase(date, time, uid);
+  #else
+    Serial.println("\n[SYSTEM] Storage Mode: GAS");
+    return checkAndLogToGoogle(date, time, uid);
+  #endif
+}
+
+// Fungsi wrapper untuk menyimpan log
+void saveAttendanceLog(const String& timestamp, const String& uid, const String& name, const String& status) {
+  #if defined(USE_STORAGE_FIREBASE)
+    logToFirebase(timestamp, uid, name, status);
+  #else
+    logToSDCard(timestamp, uid, name, status);
+  #endif
 }
 
 void showMessage(const String& line1, const String& line2, const String& line3, int delayMs = 2000) {
@@ -201,6 +487,11 @@ void setup() {
   Serial.println("\n==========================================");
   Serial.println("   INISIALISASI ABSENSI IoT GOOGLE CLOUD  ");
   Serial.println("==========================================");
+  #if defined(USE_STORAGE_FIREBASE)
+    Serial.println("[System] Storage Mode: FIREBASE");
+  #else
+    Serial.println("[System] Storage Mode: GAS");
+  #endif
 
   pinMode(PIN_LED_GREEN, OUTPUT);
   pinMode(PIN_LED_RED, OUTPUT);
@@ -223,6 +514,16 @@ void setup() {
   }else {
     Serial.println("\n[WiFi] GAGAL KONEK! Cek SSID/Pass");
   }
+
+  // ─── Inisialisasi Firebase jika diaktifkan ───────────────────────────────
+  #if defined(USE_STORAGE_FIREBASE)
+    if (WiFi.status() == WL_CONNECTED) {
+      initializeFirebase();
+    } else {
+      Serial.println("[Firebase] Menunggu WiFi terhubung...");
+    }
+  #endif
+  // ────────────────────────────────────────────────────────────────────────
 
   // Inisialisasi I2C & OLED
   Serial.print("[OLED] Inisialisasi... ");
@@ -322,10 +623,10 @@ void loop() {
   snprintf(timeStampBuf, sizeof(timeStampBuf), "%04d-%02d-%02d %02d:%02d:%02d",
            now.year(), now.month(), now.day(), now.hour(), now.minute(), now.second());
 
-  // Kirim UID ke Google Sheets & dapatkan data siswa
-  ServerResponse res = checkAndLogToGoogle(String(dateBuf), String(timeBuf), scannedUID);
+  // Kirim UID ke cloud (Firebase atau Google Sheets) & dapatkan data siswa
+  ServerResponse res = sendAndVerifyCard(String(dateBuf), String(timeBuf), scannedUID);
 
-  // Tampilkan hasil berdasarkan respon Google Cloud
+  // Tampilkan hasil berdasarkan respon cloud
   if (res.isRegistered) {
     Serial.println("[AKSES] DITERIMA: " + res.name);
     digitalWrite(PIN_LED_GREEN, HIGH);
@@ -339,7 +640,7 @@ void loop() {
     display.setCursor(0, 44);  display.println("Absen Berhasil!");
     display.display();
 
-    logToSDCard(timeStampBuf, scannedUID, res.name, "Hadir");
+    saveAttendanceLog(timeStampBuf, scannedUID, res.name, "Hadir");
 
     delay(2500);
     digitalWrite(PIN_LED_GREEN, LOW);
@@ -357,7 +658,7 @@ void loop() {
     display.setCursor(0, 44);  display.println("Tidak Terdaftar");
     display.display();
 
-    logToSDCard(timeStampBuf, scannedUID, "N/A", "Ditolak");
+    saveAttendanceLog(timeStampBuf, scannedUID, "N/A", "Ditolak");
 
     delay(2500);
     digitalWrite(PIN_LED_RED, LOW);

@@ -1,0 +1,35 @@
+{
+  "students": {
+    "12 34 56 78 AB CD": {
+      "name": "Budi Santoso",
+      "registered": true,
+      "status": "Hadir"
+    },
+    "AB CD 12 34 56 78": {
+      "name": "Siti Nurhaliza",
+      "registered": true,
+      "status": "Hadir"
+    },
+    "FF EE DD CC BB AA": {
+      "name": "Kartu Invalid",
+      "registered": false,
+      "status": "Ditolak"
+    }
+  },
+  "attendance": {
+    "12 34 56 78 AB CD": {
+      "1694280645000": {
+        "name": "Budi Santoso",
+        "status": "Hadir",
+        "timestamp": "2023-09-09 10:30:45",
+        "uid": "12 34 56 78 AB CD"
+      },
+      "1694284245000": {
+        "name": "Budi Santoso",
+        "status": "Hadir",
+        "timestamp": "2023-09-09 11:30:45",
+        "uid": "12 34 56 78 AB CD"
+      }
+    }
+  }
+}
