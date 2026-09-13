@@ -2,6 +2,7 @@
 #define WIFI_PROVISIONING_H
 
 #include "Config.h"
+#include "WebDashboard.h"
 
 // WiFi config functions
 bool loadWiFiConfig(String& outSSID, String& outPass);

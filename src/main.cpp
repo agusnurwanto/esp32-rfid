@@ -3,6 +3,7 @@
 #include "WebDashboard.h"
 #include "RFIDAttendance.h"
 #include "DisplayManager.h"
+#include "UserRegistry.h"
 
 // Global objects
 MFRC522 rfid(PIN_RFID_SS, PIN_RFID_RST);
@@ -15,6 +16,12 @@ bool sdCardReady = false;
 bool rtcReady = false;
 bool wifiProvisioningMode = false;
 unsigned long lastDisplayUpdate = 0;
+
+// Config constants
+const char* AP_SSID     = "ESP32-Setup";
+const char* AP_PASSWORD = "1234567890";
+const char* CONFIG_PATH = "/wifi_config.txt";
+const char* USERS_PATH  = "/users.json";
 
 void setup() {
   Serial.begin(115200);

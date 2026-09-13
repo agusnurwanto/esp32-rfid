@@ -2,6 +2,7 @@
 #define RFID_ATTENDANCE_H
 
 #include "Config.h"
+#include "UserRegistry.h"
 
 // RFID & Attendance functions
 ServerResponse sendAndVerifyCard(const String& uid);

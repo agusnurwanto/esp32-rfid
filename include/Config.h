@@ -28,10 +28,10 @@
 #define SCREEN_WIDTH  128
 #define SCREEN_HEIGHT 64
 
-// WiFi AP config
-const char* AP_SSID     = "ESP32-Setup";
-const char* AP_PASSWORD = "1234567890";
-const char* CONFIG_PATH = "/wifi_config.txt";
+// WiFi AP config (extern - defined in main.cpp)
+extern const char* AP_SSID;
+extern const char* AP_PASSWORD;
+extern const char* CONFIG_PATH;
 
 // Global objects
 extern MFRC522 rfid;

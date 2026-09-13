@@ -1,4 +1,5 @@
 #include "WiFiProvisioning.h"
+#include "WebDashboard.h"
 
 bool loadWiFiConfig(String& outSSID, String& outPass) {
   if (!LittleFS.exists(CONFIG_PATH)) return false;

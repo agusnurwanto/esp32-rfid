@@ -1,4 +1,5 @@
 #include "WebDashboard.h"
+#include "WiFiProvisioning.h"
 #include <ArduinoJson.h>
 
 // HTML templates
@@ -107,7 +108,6 @@ String getStatusJSON() {
   else if (wifiProvisioningMode) state = "AP Mode";
   else state = "Disconnected";
   return "{\"uptime\":\"" + String(millis()/1000) + "s\",\"wifiState\":\"" + state + 
-         "\",\"ssid\":\"" + getProvisionedSSID() + 
          "\",\"ip\":\"" + WiFi.localIP().toString() + 
          "\",\"freeRam\":" + String(ESP.getFreeHeap()) + "}";
 }
