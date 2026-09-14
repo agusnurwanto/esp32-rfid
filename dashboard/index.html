@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Absensi RFID ESP32</title>
+  <script>
+    window.__FIREBASE_CONFIG__ = FIREBASE_CONFIG_PLACEHOLDER;
+  </script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg-primary: #0f172a;
+      --bg-secondary: #1e293b;
+      --bg-card: #334155;
+      --text-primary: #f1f5f9;
+      --text-secondary: #94a3b8;
+      --accent: #22d3ee;
+      --success: #22c55e;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    }
+
+    body {
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 30px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--bg-card);
+    }
+
+    header h1 {
+      font-size: 1.6rem;
+      color: var(--accent);
+    }
+
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+
+    .status-badge.connected {
+      background: rgba(34, 197, 94, 0.15);
+      color: var(--success);
+    }
+
+    .status-badge.disconnected {
+      background: rgba(239, 68, 68, 0.15);
+      color: var(--danger);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    .status-badge.connected .status-dot { background: var(--success); }
+    .status-badge.disconnected .status-dot { background: var(--danger); }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 30px;
+    }
+
+    .stat-card {
+      background: var(--bg-secondary);
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .stat-card .label {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .stat-card .value {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .stat-card .value.success { color: var(--success); }
+    .stat-card .value.danger { color: var(--danger); }
+
+    .chart-section {
+      background: var(--bg-secondary);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 30px;
+    }
+
+    .chart-section h2 {
+      font-size: 1.1rem;
+      margin-bottom: 20px;
+      color: var(--text-secondary);
+    }
+
+    canvas {
+      max-height: 350px;
+    }
+
+    .table-section {
+      background: var(--bg-secondary);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 30px;
+      overflow: hidden;
+    }
+
+    .table-section h2 {
+      font-size: 1.1rem;
+      margin-bottom: 20px;
+      color: var(--text-secondary);
+    }
+
+    .table-wrapper {
+      overflow-x: auto;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      background: var(--bg-secondary);
+      padding: 12px 16px;
+      text-align: left;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-secondary);
+      border-bottom: 1px solid var(--bg-card);
+    }
+
+    td {
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+      font-size: 0.9rem;
+    }
+
+    tr:hover td {
+      background: rgba(51, 65, 85, 0.3);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .badge.hadir {
+      background: rgba(34, 197, 94, 0.15);
+      color: var(--success);
+    }
+
+    .badge.ditolak {
+      background: rgba(239, 68, 68, 0.15);
+      color: var(--danger);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 50px 20px;
+      color: var(--text-secondary);
+    }
+
+    .empty-state svg {
+      width: 60px;
+      height: 60px;
+      margin-bottom: 16px;
+      opacity: 0.4;
+    }
+
+    .refresh-info {
+      text-align: right;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      margin-top: 12px;
+    }
+
+    .config-panel {
+      background: var(--bg-secondary);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 30px;
+    }
+
+    .config-panel h2 {
+      font-size: 1.1rem;
+      margin-bottom: 16px;
+      color: var(--text-secondary);
+    }
+
+    .config-panel input {
+      width: 100%;
+      padding: 10px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--bg-card);
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-size: 0.9rem;
+      margin-bottom: 12px;
+    }
+
+    .config-panel button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      background: var(--accent);
+      color: var(--bg-primary);
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: opacity 0.2s;
+    }
+
+    .config-panel button:hover {
+      opacity: 0.85;
+    }
+
+    @media (max-width: 600px) {
+      header {
+        flex-direction: column;
+        gap: 12px;
+        align-items: flex-start;
+      }
+      .stats-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>📊 Dashboard Absensi RFID</h1>
+      <div id="statusBadge" class="status-badge disconnected">
+        <div class="status-dot"></div>
+        <span id="statusText">Disconnected</span>
+      </div>
+    </header>
+
+    <div class="config-panel">
+      <h2>⚙ Konfigurasi Firebase</h2>
+      <input type="text" id="firebaseConfig" placeholder='Paste Firebase config object di sini, contoh:
+{
+  "apiKey": "AIza...",
+  "databaseURL": "https://project.firebaseio.com"
+}' />
+      <button id="saveConfigBtn">Simpan & Hubungkan</button>
+    </div>
+
+    <section class="stats-grid">
+      <div class="stat-card">
+        <div class="label">Total Scan Hari Ini</div>
+        <div class="value" id="totalToday">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Hadir</div>
+        <div class="value success" id="hadirCount">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Ditolak</div>
+        <div class="value danger" id="ditolakCount">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Siswa Terdaftar</div>
+        <div class="value" id="registeredCount">-</div>
+      </div>
+    </section>
+
+    <section class="chart-section">
+      <h2>📈 Grafik Absensi — 7 Hari Terakhir</h2>
+      <canvas id="attendanceChart"></canvas>
+      <div class="refresh-info" id="lastUpdate"></div>
+    </section>
+
+    <section class="table-section">
+      <h2>🕒 Log Absensi Terbaru</h2>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Waktu</th>
+              <th>UID</th>
+              <th>Nama</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="attendanceBody">
+          </tbody>
+        </table>
+      </div>
+      <div class="empty-state" id="emptyState" style="display:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+        </svg>
+        <p>Belum ada data absensi</p>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    // ── State ──────────────────────────────────────────────────
+    let app = null;
+    let db = null;
+    let chart = null;
+
+    const CONFIG_KEY = 'rfid-dashboard-config';
+
+    // ── DOM refs ───────────────────────────────────────────────
+    const $ = (id) => document.getElementById(id);
+    const statusBadge = $('statusBadge');
+    const statusText = $('statusText');
+    const attendanceBody = $('attendanceBody');
+    const emptyState = $('emptyState');
+    const lastUpdate = $('lastUpdate');
+
+    // ── Firebase init ──────────────────────────────────────────
+    function initFirebase() {
+      const config = window.__FIREBASE_CONFIG__;
+      if (!config || !config.apiKey || !config.databaseURL) {
+        console.warn('Firebase config tidak ditemukan. Gunakan panel konfigurasi di bawah.');
+        return;
+      }
+      if (app) firebase.app().delete();
+      app = firebase.initializeApp(config);
+      db = firebase.database();
+    }
+
+    function loadSavedConfig() {
+      try {
+        const raw = localStorage.getItem(CONFIG_KEY);
+        if (raw) return JSON.parse(raw);
+      } catch (e) {}
+      return null;
+    }
+
+    function saveConfig(configObj) {
+      localStorage.setItem(CONFIG_KEY, JSON.stringify(configObj));
+    }
+
+    // ── UI helpers ─────────────────────────────────────────────
+    function setConnected() {
+      statusBadge.className = 'status-badge connected';
+      statusText.textContent = 'Connected · Live';
+    }
+
+    function setDisconnected() {
+      statusBadge.className = 'status-badge disconnected';
+      statusText.textContent = 'Disconnected';
+    }
+
+    function timeAgo(dateStr) {
+      const d = new Date(dateStr);
+      const diff = Date.now() - d.getTime();
+      const mins = Math.floor(diff / 60000);
+      if (mins < 1) return 'Baru saja';
+      if (mins < 60) return mins + ' menit lalu';
+      const hrs = Math.floor(mins / 60);
+      if (hrs < 24) return hrs + ' jam lalu';
+      return Math.floor(hrs / 24) + ' hari lalu';
+    }
+
+    function formatDate(iso) {
+      const d = new Date(iso);
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      const hours = String(d.getHours()).padStart(2, '0');
+      const mins = String(d.getMinutes()).padStart(2, '0');
+      const secs = String(d.getSeconds()).padStart(2, '0');
+      return `${year}-${month}-${day} ${hours}:${mins}:${secs}`;
+    }
+
+    function todayStr() {
+      return new Date().toISOString().slice(0, 10);
+    }
+
+    // ── Stats ──────────────────────────────────────────────────
+    function updateStats(data) {
+      const today = todayStr();
+      let total = 0, hadir = 0, ditolak = 0;
+
+      Object.values(data).forEach(entry => {
+        const ts = entry.timestamp || '';
+        if (ts.startsWith(today)) {
+          total++;
+          if (entry.status === 'Hadir') hadir++;
+          else if (entry.status === 'Ditolak') ditolak++;
+        }
+      });
+
+      $('totalToday').textContent = total || '-';
+      $('hadirCount').textContent = hadir || '-';
+      $('ditolakCount').textContent = ditolak || '-';
+
+      // Registered students
+      if (db) {
+        db.ref('students').once('value').then(snap => {
+          $('registeredCount').textContent = snap.numChildren();
+        }).catch(() => {
+          $('registeredCount').textContent = '-';
+        });
+      }
+    }
+
+    // ── Table ──────────────────────────────────────────────────
+    function renderTable(entries) {
+      const sorted = Object.entries(entries)
+        .sort((a, b) => (b[1].timestamp || '').localeCompare(a[1].timestamp || ''));
+
+      attendanceBody.innerHTML = '';
+      if (sorted.length === 0) {
+        emptyState.style.display = '';
+        return;
+      }
+      emptyState.style.display = 'none';
+
+      sorted.slice(0, 50).forEach(([key, entry]) => {
+        const tr = document.createElement('tr');
+        const statusBadgeHTML = entry.status === 'Hadir'
+          ? '<span class="badge hadir">Hadir</span>'
+          : '<span class="badge ditolak">Ditolak</span>';
+        tr.innerHTML = `
+          <td>${formatDate(entry.timestamp)}</td>
+          <td>${entry.uid || '-'}</td>
+          <td>${entry.name || '-'}</td>
+          <td>${statusBadgeHTML}</td>
+        `;
+        attendanceBody.appendChild(tr);
+      });
+    }
+
+    // ── Chart ──────────────────────────────────────────────────
+    function updateChart(data) {
+      const today = todayStr();
+      const days = [];
+      const hadirData = [];
+      const ditolakData = [];
+
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const ds = d.toISOString().slice(0, 10);
+        const label = `${d.getDate()}/${d.getMonth()+1}`;
+
+        let h = 0, dt = 0;
+        Object.values(data).forEach(entry => {
+          const ts = entry.timestamp || '';
+          if (ts.startsWith(ds)) {
+            if (entry.status === 'Hadir') h++;
+            else if (entry.status === 'Ditolak') dt++;
+          }
+        });
+        days.push(label);
+        hadirData.push(h);
+        ditolakData.push(dt);
+      }
+
+      if (chart) chart.destroy();
+
+      const ctx = document.getElementById('attendanceChart').getContext('2d');
+      chart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: days,
+          datasets: [
+            {
+              label: 'Hadir',
+              data: hadirData,
+              backgroundColor: 'rgba(34,197,94,0.6)',
+              borderColor: '#22c55e',
+              borderWidth: 1,
+              borderRadius: 4,
+            },
+            {
+              label: 'Ditolak',
+              data: ditolakData,
+              backgroundColor: 'rgba(239,68,68,0.6)',
+              borderColor: '#ef4444',
+              borderWidth: 1,
+              borderRadius: 4,
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              labels: { color: '#94a3b8' }
+            }
+          },
+          scales: {
+            x: {
+              ticks: { color: '#94a3b8' },
+              grid: { color: 'rgba(148,163,184,0.1)' }
+            },
+            y: {
+              beginAtZero: true,
+              ticks: { color: '#94a3b8', stepSize: 1 },
+              grid: { color: 'rgba(148,163,184,0.1)' }
+            }
+          }
+        }
+      });
+    }
+
+    // ── Live listener ──────────────────────────────────────────
+    function startLiveListener() {
+      if (!db) return;
+
+      // Students
+      db.ref('students').on('value', snap => {
+        const count = snap.numChildren();
+        // Update registered count card if visible
+      });
+
+      // Attendance — keep last 200 entries
+      db.ref('attendance').limitToLast(200).on('value', snap => {
+        if (!snap.exists()) {
+          renderTable({});
+          updateStats({});
+          updateChart({});
+          lastUpdate.textContent = 'Database kosong';
+          return;
+        }
+
+        const data = snap.val();
+        renderTable(data);
+        updateStats(data);
+        updateChart(data);
+        lastUpdate.textContent = `Terupdate: ${new Date().toLocaleTimeString('id-ID')}`;
+        setConnected();
+      }, () => {
+        setDisconnected();
+      });
+    }
+
+    // ── Config flow ────────────────────────────────────────────
+    // Coba inisialisasi dari injected config dulu
+    initFirebase();
+
+    // Jika berhasil terhubung, sembunyikan panel konfigurasi dan langsung start
+    if (db) {
+      startLiveListener();
+      // Sembunyikan panel konfigurasi karena sudah pakai injected config
+      document.querySelector('.config-panel').style.display = 'none';
+    } else {
+      // Fallback: tampilkan panel konfigurasi manual
+      $('saveConfigBtn').addEventListener('click', () => {
+        const raw = $('firebaseConfig').value.trim();
+        try {
+          const config = JSON.parse(raw);
+          // Simpan ke window untuk fallback
+          window.__FIREBASE_CONFIG__ = config;
+          initFirebase();
+          if (db) {
+            startLiveListener();
+            $('firebaseConfig').disabled = true;
+            $('saveConfigBtn').textContent = 'Terhubung ✓';
+            // Simpan juga di localStorage untuk recovery
+            try {
+              localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+            } catch (e) {}
+          }
+        } catch (e) {
+          alert('Format JSON tidak valid: ' + e.message);
+        }
+      });
+    }
+  </script>
+</body>
+</html>
